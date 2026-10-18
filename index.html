@@ -1082,7 +1082,19 @@ const L89 = (() => {
     return x;
   }
 
+  // Like the TI-83/84, close parentheses left open at the end of the line (before a trailing → name).
+  function closeParens(src) {
+    const s = String(src);
+    let depth = 0;
+    for (const c of s) { if (c === '(') depth++; else if (c === ')' && --depth < 0) return s; }
+    if (depth <= 0) return s;
+    const m = /\s*(->|→)\s*[A-Za-z_][A-Za-z0-9_]*\s*$/.exec(s);
+    const at = m ? m.index : s.trimEnd().length;
+    return s.slice(0, at).trimEnd() + ')'.repeat(depth) + s.slice(at);
+  }
+
   function run(src, env) {
+    src = closeParens(src);
     const ast = parse(tokenize(src));
     let value, label = '';
     if (ast.t === 'store') { const nm = assignable(ast.name); value = evaluate(ast.expr, env); env[nm] = value; label = nm + ' ='; }
@@ -1090,7 +1102,7 @@ const L89 = (() => {
     else { value = evaluate(ast, env); if (ast.t === 'call' && ast.name === 'solve') label = ast.args[1].name + ' ='; }
     if (!Number.isFinite(value)) throw err('The answer isn’t a finite number');
     env.ans = value;
-    return { value, label };
+    return { value, label, src };
   }
   const cloneEnv = (o) => Object.assign(Object.create(null), o);
 
@@ -1478,7 +1490,7 @@ const L89 = (() => {
   const hasAns = () => Object.prototype.hasOwnProperty.call(env, 'ans');
 
   function evalLine(src) {
-    try { const r = L89.run(src, env); return { expr: src, value: r.value, label: r.label }; }
+    try { const r = L89.run(src, env); return { expr: r.src, value: r.value, label: r.label }; }
     catch (e) { return { expr: src, error: e instanceof L89.CalcError ? e.message : 'Something went wrong working that out' }; }
   }
   const SEEDS = ['pmt(250k, 6.5, 30)', 'bal(1.25m, 7.25, 25, 60)', 'loan(9500, 7, 20)', '185k → noi', 'solve(pmt(x, 7.5, 25)*12 = noi/1.25, x)', 'irr(-1m, 120k, 120k, 120k, 1.15m)'];
