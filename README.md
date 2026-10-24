@@ -21,6 +21,6 @@ Open the same address in Chrome or Edge and click the install icon at the right 
 
 ## Updating
 
-Replace `index.html` in the repo with a new version. The app picks it up the next time it opens with a connection. If icons or `sw.js` change, change `VERSION` at the top of `sw.js` too.
+Replace `index.html` in the repo with a new version. The app picks it up the next time it opens with a connection. If `manifest.webmanifest`, the icons or `sw.js` change, change `VERSION` at the top of `sw.js` in the same update. The installed app keeps its saved copies of those files until `sw.js` changes.
 
 History, stored values and loan inputs live only on the device where you use the app.

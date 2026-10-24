@@ -1,7 +1,8 @@
 // Ledger 89 offline cache.
 // The page itself is fetched network-first (giving up after 2 seconds) so updates arrive on the next
-// online launch; everything else is served from the cache. Bump VERSION when icons or this file change.
-const VERSION = 'ledger89-v3';
+// online launch; everything else is served from the cache. Bump VERSION whenever the manifest, the icons or this
+// file change: the app keeps serving its cached copies until this file changes.
+const VERSION = 'ledger89-v4';
 const SHELL = [
   './',
   'index.html',
