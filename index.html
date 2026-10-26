@@ -103,6 +103,13 @@ body.paper{--page:var(--paper)}
 .row .a,.row .err{margin-left:auto;flex:0 1 auto;min-width:0;text-align:right;overflow-wrap:anywhere}
 .row .a{font:600 18px/1.35 var(--font-mono);color:var(--lcd-ink);background:none;border:0;padding:3px 0;cursor:pointer;font-variant-numeric:tabular-nums}
 .row .a .lbl{font-weight:400;color:var(--lcd-dim);margin-right:.6ch}
+/* with a mouse, past entries and answers highlight like the stored values, so it's clear they can be clicked */
+@media (hover:hover) and (pointer:fine){
+  .row .q,.row .a{border-radius:6px;padding-inline:6px}
+  .row .q{margin-left:-6px}
+  .row .a{margin-right:-6px}
+  .row .q:hover,.row .a:hover{background:color-mix(in srgb,var(--lcd-ink) 10%,var(--lcd))}
+}
 .row .err{font:500 13px/1.35 var(--font-ui);color:var(--lcd-err);padding:3px 0}
 .divider{font:600 11.5px/1 var(--font-ui);letter-spacing:.12em;text-transform:uppercase;color:var(--lcd-dim);padding:12px 0 5px}
 .divider:first-child{padding-top:2px}
@@ -343,7 +350,10 @@ tfoot th{left:0;z-index:3;text-align:left;font:600 13px/1.2 var(--font-ui);color
 
 @media (min-width:960px){
   .sheet{display:grid;grid-template-columns:minmax(330px,380px) minmax(0,1fr);gap:32px;align-items:start}
-  .form{position:sticky;top:calc(var(--ro-h,112px) + 10px);max-height:calc(100vh - var(--ro-h,112px) - 94px);overflow-y:auto;padding:3px 8px 3px 3px;scrollbar-width:thin}
+  /* bottom padding clears the links' enlarged tap areas (inset −10px), which otherwise overflow and add a scrollbar */
+  .form{position:sticky;top:calc(var(--ro-h,112px) + 10px);max-height:calc(100vh - var(--ro-h,112px) - 94px);overflow-y:auto;padding:3px 8px 12px 3px;scrollbar-width:thin}
+  /* when the whole form doesn't fit beside the readout, it scrolls with the page instead of in its own box (set in fitForm) */
+  .form-free .form{position:static;max-height:none;overflow:visible}
 }
 
 /* ---------- LOAN: quick path, coverage, number pad ---------- */
@@ -1464,6 +1474,7 @@ const L89 = (() => {
       if (typeof finePointer !== 'undefined' && finePointer) { try { input.focus({ preventScroll: true }); } catch (_) { /* ignore */ } }
     }
     if (t === 'loan') renderChart();
+    requestAnimationFrame(fitForms);
   }
   TABS.forEach((n) => $('#tab-' + n).addEventListener('click', () => setTab(n)));
   $('.tabs').addEventListener('keydown', (e) => {
@@ -1842,7 +1853,8 @@ const L89 = (() => {
   const amt = (x) => (Number.isInteger(r2(x)) ? MONEY0.format(x) : money(x));
 
   const more = $('#more');
-  more.open = loan.moreOpen != null ? !!loan.moreOpen : !!(window.matchMedia && window.matchMedia('(min-width: 960px)').matches);
+  // Starts closed on every screen, so the desktop form fits without its own scrollbar; opening it is remembered.
+  more.open = !!loan.moreOpen;
   more.addEventListener('toggle', () => { loan.moreOpen = more.open; saveLoan(); });
 
   function readFee() {
@@ -2247,6 +2259,23 @@ const L89 = (() => {
   const lpad = $('#lpad'), loanView = $('#view-loan');
   // The desktop form sticks just below the readout, whatever height the readout ends up.
   if ('ResizeObserver' in window) new ResizeObserver(() => { const h = $('#readout').offsetHeight; if (h) loanView.style.setProperty('--ro-h', h + 'px'); }).observe($('#readout'));
+  // On a wide screen the form sticks beside the results. When the whole form doesn't fit there (a short window,
+  // or More terms open), it scrolls with the page instead of getting its own scrollbar.
+  const wideMq = window.matchMedia ? window.matchMedia('(min-width: 960px)') : null;
+  function fitForm(view) {
+    const form = $('.form', view), ro = $('.readout', view);
+    if (!form || !ro || view.hidden) return;
+    const room = window.innerHeight - ro.offsetHeight - 94;   // the max-height in the CSS
+    view.classList.toggle('form-free', !!(wideMq && wideMq.matches) && form.scrollHeight > room + 1);
+  }
+  const fitForms = () => $$('.view.loan').forEach(fitForm);
+  window.addEventListener('resize', fitForms);
+  more.addEventListener('toggle', fitForms);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitForms);
+  if ('ResizeObserver' in window) {
+    const formRo = new ResizeObserver(() => fitForms());
+    $$('.view.loan .form > *').forEach((el) => formRo.observe(el));
+  }
   let lpKey = null, freshEl = null;
   const clearFresh = () => { if (freshEl) { const w = freshEl.closest('.inp'); if (w) w.classList.remove('fresh'); freshEl = null; } };
   if (usePad) PAD.forEach((k) => LF[k].setAttribute('inputmode', 'none'));
