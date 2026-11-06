@@ -1695,6 +1695,13 @@ const L89 = (() => {
 
   // desktop: the entry line takes typing from anywhere on the Home screen
   const finePointer = !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+
+  // Key vibration: a short buzz on each key of the Home keypad and the number pads, a longer one when holding ⌫
+  // clears the field. Only on touch screens that can vibrate (not iPhone); on by default, saved like the theme.
+  const canVibe = !finePointer && typeof navigator.vibrate === 'function';
+  let vibeOn = store.get('l89.vibe', 'on') !== 'off';
+  const buzz = (ms) => { if (canVibe && vibeOn) { try { navigator.vibrate(ms); } catch (_) { /* ignore */ } } };
+  document.addEventListener('pointerdown', (e) => { if (e.target.closest('#pad .k, #lpad button')) buzz(10); }, true);
   document.addEventListener('keydown', (e) => {
     if ($('#view-home').hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = document.activeElement;
@@ -1711,7 +1718,7 @@ const L89 = (() => {
   bsKey.addEventListener('pointerdown', () => {
     bsLong = false;
     clearTimeout(bsTimer);
-    bsTimer = setTimeout(() => { bsLong = true; input.value = ''; placeCaret(0); updatePreview(); }, 450);
+    bsTimer = setTimeout(() => { bsLong = true; buzz(20); input.value = ''; placeCaret(0); updatePreview(); }, 450);
   });
   const bsEnd = () => clearTimeout(bsTimer);
   bsKey.addEventListener('pointerup', bsEnd);
@@ -2280,7 +2287,30 @@ const L89 = (() => {
   const clearFresh = () => { if (freshEl) { const w = freshEl.closest('.inp'); if (w) w.classList.remove('fresh'); freshEl = null; } };
   if (usePad) PAD.forEach((k) => LF[k].setAttribute('inputmode', 'none'));
   const visiblePad = () => PAD.filter((k) => LF[k].offsetParent !== null);
+  // Back closes a number pad: opening one adds a history entry, so Android's back gesture closes the pad instead of
+  // leaving the app. Next between fields keeps the same entry; closing the pad any other way (Done, tapping outside,
+  // another tab) takes the entry back off.
+  let padHist = false, padPopSkip = false, padBackClose = null;
+  function padHistOpen(closer) {
+    padBackClose = closer;
+    if (padHist) return;
+    padHist = true;
+    try { history.pushState({ l89pad: true }, ''); } catch (_) { padHist = false; }
+  }
+  function padHistClose() {
+    if (!padHist) return;
+    padHist = false; padBackClose = null; padPopSkip = true;
+    try { history.back(); } catch (_) { padPopSkip = false; }
+  }
+  window.addEventListener('popstate', () => {
+    if (padPopSkip) { padPopSkip = false; return; }   // our own history.back() after the pad closed
+    if (!padHist) return;
+    padHist = false;
+    const close = padBackClose; padBackClose = null;
+    if (close) close();
+  });
   function padOpen(k) {
+    padHistOpen(() => { const el = LF[lpKey]; commitField(lpKey); padClose(); if (el) el.blur(); });
     lpKey = k;
     lpad.hidden = false;
     $('#lpLabel').textContent = k === 'fee' ? (loan.feeUnit === '%' ? 'Fees, % of the loan' : 'Fees, dollars')
@@ -2299,7 +2329,7 @@ const L89 = (() => {
       if (fr.bottom > padTop - 12 || fr.top < stripB + 8) loanView.scrollTop += fr.top + fr.height / 2 - (stripB + padTop) / 2;
     });
   }
-  function padClose() { lpad.hidden = true; loanView.classList.remove('padded'); lpKey = null; }
+  function padClose() { lpad.hidden = true; loanView.classList.remove('padded'); lpKey = null; padHistClose(); }
   function commitField(k) { if (k && LF[k]) LF[k].dispatchEvent(new Event('change', { bubbles: true })); }
   function padMove(dir) {
     const ord = visiblePad(), i = ord.indexOf(lpKey), nk = ord[i + dir];
@@ -2345,7 +2375,7 @@ const L89 = (() => {
   lpBs.addEventListener('pointerdown', () => {
     lpBsLong = false;
     clearTimeout(lpBsTimer);
-    lpBsTimer = setTimeout(() => { lpBsLong = true; padBack(true); }, 450);
+    lpBsTimer = setTimeout(() => { lpBsLong = true; buzz(20); padBack(true); }, 450);
   });
   ['pointerup', 'pointerleave', 'pointercancel'].forEach((ev) => lpBs.addEventListener(ev, () => clearTimeout(lpBsTimer)));
 
@@ -2766,10 +2796,15 @@ const L89 = (() => {
     ]);
     h += '<section class="appear"><h2>Appearance</h2><div class="tgl theme-tgl" role="group" aria-label="Appearance">' +
       ['auto', 'light', 'dark'].map((t) => `<button type="button" data-theme-set="${t}">${t === 'auto' ? 'Auto' : t === 'light' ? 'Light' : 'Dark'}</button>`).join('') +
-      '</div><p class="lede">Auto follows the phone or computer setting.</p></section></div>';
+      '</div><p class="lede">Auto follows the phone or computer setting.</p>' +
+      (canVibe ? '<p class="lede">Key vibration</p><div class="tgl theme-tgl" role="group" aria-label="Key vibration">' +
+        '<button type="button" data-vibe-set="on">On</button><button type="button" data-vibe-set="off">Off</button></div>' : '') +
+      '</section></div>';
     $('#ref').innerHTML = h;
     applyTheme(theme);
+    syncVibe();
   }
+  const syncVibe = () => $$('[data-vibe-set]').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.vibeSet === 'on') === vibeOn)));
   let theme = pick(store.get('l89.theme', 'auto'), ['auto', 'light', 'dark'], 'auto');
   function applyTheme(t) {
     theme = t;
@@ -2785,6 +2820,8 @@ const L89 = (() => {
   $('#ref').addEventListener('click', (e) => {
     const tb = e.target.closest('button[data-theme-set]');
     if (tb) { applyTheme(tb.dataset.themeSet); store.set('l89.theme', theme); return; }
+    const vb = e.target.closest('button[data-vibe-set]');
+    if (vb) { vibeOn = vb.dataset.vibeSet === 'on'; store.set('l89.vibe', vibeOn ? 'on' : 'off'); syncVibe(); buzz(10); return; }
     const b = e.target.closest('button[data-ex]');
     if (!b) return;
     input.value = b.dataset.ex;
